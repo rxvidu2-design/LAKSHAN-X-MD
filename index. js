@@ -1,0 +1,71 @@
+const { default: makeWASocket, useMultiFileAuthState, downloadMediaMessage } = require('@whiskeysockets/baileys')
+const P = require('pino')
+const { Sticker, StickerTypes } = require('wa-sticker-formatter')
+const axios = require('axios')
+
+async function startBot() {
+  const { state, saveCreds } = await useMultiFileAuthState('auth')
+  const sock = makeWASocket({
+    logger: P({ level: 'silent' }),
+    auth: state,
+    printQRInTerminal: true,
+    browser: ["LAKSHAN-MD", "Chrome", "1.0"]
+  })
+
+  sock.ev.on('creds.update', saveCreds)
+  sock.ev.on('connection.update', ({ connection }) => {
+    if (connection === 'close') startBot()
+    if (connection === 'open') console.log('✅ LAKSHAN MD ONLINE!')
+  })
+
+  sock.ev.on('messages.upsert', async m => {
+    const msg = m.messages[0]
+    if (!msg.message || msg.key.fromMe) return
+    const from = msg.key.remoteJid
+    const body = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || msg.message.videoMessage?.caption || ""
+    const args = body.trim().split(/ +/)
+    const command = args[0].toLowerCase()
+    const q = args.slice(1).join(" ")
+
+    const reply = (text) => sock.sendMessage(from, { text: text }, { quoted: msg })
+
+    if (command === '.ping') {
+      reply(`🏓 *PONG!*\n⚡ Bot: LAKSHAN MD\n🚀 Host: Omini 0.5 CPU | 512MB`)
+    }
+
+    if (command === '.menu' || command === '.help') {
+      reply(`*╭─「 LAKSHAN MD V1 」─*\n*├ .ping - check*\n*├ .alive - alive check*\n*├ .s / .sticker - photo to sticker*\n*├ .ai <q> - AI chat*\n*╰─ Powered by LAKSHAN MD*`)
+    }
+
+    if (command === '.alive') {
+      reply(`✅ *LAKSHAN MD IS ALIVE!*`)
+    }
+
+    if (command === '.s' || command === '.sticker') {
+      try {
+        const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: P({level:'silent'}), reuploadRequest: sock.updateMediaMessage })
+        const sticker = new Sticker(buffer, {
+          pack: 'LAKSHAN MD',
+          author: 'Lakshan',
+          type: StickerTypes.FULL,
+          quality: 70
+        })
+        await sock.sendMessage(from, { sticker: await sticker.toBuffer() }, { quoted: msg })
+      } catch (e) {
+        reply('📸 Photo ekak reply karala .s kiyanna wasi!')
+      }
+    }
+
+    if (command === '.ai') {
+      if (!q) return reply('Ex: .ai who are you')
+      try {
+        const res = await axios.get(`https://api.simsimi.net/v2/?text=${encodeURIComponent(q)}&lc=en`)
+        reply(`*AI:* ${res.data.success}`)
+      } catch {
+        reply('AI busy wasi!')
+      }
+    }
+  })
+}
+
+startBot() 
